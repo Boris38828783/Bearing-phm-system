@@ -114,3 +114,104 @@ def normalize(X, method="zscore"):
         raise ValueError(f"不支持的归一化方法：{method}，请用 'zscore' 或 'minmax'")
 
     return X_norm
+
+def compute_balanced_stride(signal_length, window_size, target_samples):
+    """
+    计算为达到目标样本数所需的滑窗步长。
+
+    参数：
+        signal_length (int): 原始信号长度
+        window_size (int): 窗口长度
+        target_samples (int): 希望切出的样本数
+
+    返回：
+        int: 应使用的步长（至少为 1）
+
+    说明：
+        样本数 n 与步长 s 的关系近似为：
+            n = (signal_length - window_size) / s + 1
+        反解得：
+            s = (signal_length - window_size) / (n - 1)
+        对少数类使用更小的步长，可切出更多重叠样本，
+        从而缓解类别不平衡。
+    """
+    if target_samples <= 1:
+        return window_size
+
+    usable = signal_length - window_size
+    stride = int(usable // (target_samples - 1))
+
+    # 步长至少为 1，且不超过窗口长度（超过就浪费数据了）
+    stride = max(1, min(stride, window_size))
+    return stride
+
+
+def build_balanced_dataset(file_label_map, data_dir="data/raw",
+                           window_size=2048, target_per_class=None,
+                           sensor="DE"):
+    """
+    构建类别平衡的数据集：对每个文件自动计算步长，
+    使各类样本数尽量接近 target_per_class。
+
+    参数：
+        file_label_map (dict): 文件名 -> 标签
+        data_dir (str): 数据目录
+        window_size (int): 样本长度
+        target_per_class (int): 每类目标样本数；None 表示自动取最大可能值
+        sensor (str): "DE" 或 "FE"
+
+    返回：
+        X (np.ndarray), y (np.ndarray)
+    """
+    import os
+    from src.data.data_loader import load_signal
+
+    # 先读取所有信号，记录长度
+    signals = {}
+    for file_name, label in file_label_map.items():
+        file_path = os.path.join(data_dir, file_name)
+        signals[file_name] = load_signal(file_path, sensor=sensor)
+
+    # 若未指定目标数，取"不重叠切分时最多的那一类"的样本数
+    if target_per_class is None:
+        counts = [(len(s) - window_size) // window_size + 1
+                  for s in signals.values()]
+        target_per_class = max(counts)
+
+    X_list, y_list = [], []
+    for file_name, label in file_label_map.items():
+        sig = signals[file_name]
+        stride = compute_balanced_stride(len(sig), window_size, target_per_class)
+        samples = split_signal(sig, window_size=window_size, stride=stride)
+
+        # 若切多了，截断到目标数量
+        samples = samples[:target_per_class]
+
+        X_list.append(samples)
+        y_list.append(np.full(len(samples), label))
+        print(f"{file_name}: stride={stride}, 切出 {len(samples)} 个样本, 标签={label}")
+
+    X = np.concatenate(X_list, axis=0)
+    y = np.concatenate(y_list, axis=0)
+    return X, y
+
+def compute_class_weights(y):
+    """
+    计算类别权重，用于缓解类别不平衡（配合加权损失函数使用）。
+
+    参数：
+        y (np.ndarray): 标签数组
+
+    返回：
+        np.ndarray: 各类别的权重，样本越少权重越大
+
+    说明：
+        采用 sklearn 的 'balanced' 策略：
+            weight_c = n_samples / (n_classes * count_c)
+        少数类得到更大权重，使其在损失中占更大比重。
+    """
+    classes, counts = np.unique(y, return_counts=True)
+    n_samples = len(y)
+    n_classes = len(classes)
+    weights = n_samples / (n_classes * counts)
+    return weights.astype(np.float32)
