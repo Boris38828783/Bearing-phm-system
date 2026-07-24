@@ -1,0 +1,22 @@
+# 数据文件
+data/
+
+# 训练相关
+notebooks/
+src/
+*.pth
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 版本控制
+.git/
+.gitignore
+
+# 开发环境
+.vscode/
+.ipynb_checkpoints/
+
+# 文档
+README.md

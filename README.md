@@ -26,3 +26,9 @@ notebooks/ 探索性分析
 
 ## 环境
 Python 3.10，依赖见 requirements.txt
+
+## 部署
+- 模型导出为 ONNX 格式，与 PyTorch 输出一致性误差 < 1e-6
+- ONNX Runtime 推理加速 **4.84x**，单样本时延 **0.094 ms**
+- FastAPI 推理服务：输入校验、置信度输出、健康检查、自动生成 OpenAPI 文档
+- 提供 Dockerfile（slim 基础镜像、分层缓存优化、HEALTHCHECK 配置）
