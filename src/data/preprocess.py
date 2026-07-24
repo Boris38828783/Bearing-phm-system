@@ -215,3 +215,34 @@ def compute_class_weights(y):
     n_classes = len(classes)
     weights = n_samples / (n_classes * counts)
     return weights.astype(np.float32)
+
+def add_noise(X, snr_db):
+    """
+    按指定信噪比给信号添加高斯白噪声。
+
+    参数：
+        X (np.ndarray): 形状 (样本数, 信号长度) 的信号
+        snr_db (float): 目标信噪比（分贝）。越小噪声越强。
+                        例如 10=轻微干扰, 0=噪声与信号等强, -4=强干扰
+
+    返回：
+        np.ndarray: 加噪后的信号，形状不变
+
+    说明：
+        对每个样本单独按其自身功率计算所需噪声强度，
+        保证每条样本都达到指定的 SNR。
+        推导：SNR_dB = 10*log10(P_signal / P_noise)
+             => P_noise = P_signal / 10^(SNR_dB/10)
+    """
+    X = X.astype(np.float32)
+
+    # 1) 计算每个样本的信号功率（均方值），保持维度便于广播
+    signal_power = np.mean(X ** 2, axis=1, keepdims=True)
+
+    # 2) 由 SNR 反推所需的噪声功率
+    noise_power = signal_power / (10 ** (snr_db / 10.0))
+
+    # 3) 生成对应强度的高斯白噪声（标准差 = 根号功率）
+    noise = np.random.randn(*X.shape).astype(np.float32) * np.sqrt(noise_power)
+
+    return X + noise
