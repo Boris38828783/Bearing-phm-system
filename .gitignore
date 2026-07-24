@@ -14,3 +14,6 @@ Thumbs.db
 
 # VS Code settings
 .vscode/
+
+# 训练的模型文件比较大，不上传
+models/*.pth
